@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+        <DirectoryRef Id="INSTALLFOLDER" />
+    </Fragment>
+    <Fragment>
+        <ComponentGroup Id="ProductComponents">
+            <Component Id="cmpCC5600A0E0013FC2479752FF2E317D0E" Directory="INSTALLFOLDER" Guid="*">
+                <File Id="filA37EA31C1F18E8079A0153A07EC2C1F2" KeyPath="yes" Source="$(var.SQLCMCmd.TargetDir)\CommandLine.dll" />
+            </Component>
+            <Component Id="cmp1E79642B0C11D101EF141136BB99312D" Directory="INSTALLFOLDER" Guid="*">
+                <File Id="fil15F5E6A23B41DE653F48646CA3EBDF78" KeyPath="yes" Source="$(var.SQLCMCmd.TargetDir)\CommandLine.xml" />
+            </Component>
+            <Component Id="cmp42CE9AE95732AA34478329FB9DE90B9C" Directory="INSTALLFOLDER" Guid="*">
+                <File Id="filD7AACEE505C0A6D9F0953957C6B91C28" KeyPath="yes" Source="$(var.SQLCMCmd.TargetDir)\NLog.config" />
+            </Component>
+            <Component Id="cmpB7F1EBE42DCB1051B92D42C1EF84E2F9" Directory="INSTALLFOLDER" Guid="*">
+                <File Id="filA09ADF42C6343B9B7C7780D266455CC4" KeyPath="yes" Source="$(var.SQLCMCmd.TargetDir)\NLog.dll" />
+            </Component>
+            <Component Id="cmpAF162B14FA6391E4D0D34D9485A3CBEB" Directory="INSTALLFOLDER" Guid="*">
+                <File Id="fil938BF1D1B479C73F0CECCBD51683AA0E" KeyPath="yes" Source="$(var.SQLCMCmd.TargetDir)\NLog.xml" />
+            </Component>
+            <Component Id="cmpD412E6F231F94AB02E5386BD90952E82" Directory="INSTALLFOLDER" Guid="*">
+                <File Id="fil69B78A872B4A93EA26204181900884AA" KeyPath="yes" Source="$(var.SQLCMCmd.TargetDir)\SQLCMCmd.exe" />
+            </Component>
+            <Component Id="cmpE53486CCF547C100A38C3964644F091C" Directory="INSTALLFOLDER" Guid="*">
+                <File Id="fil2A24ABB42713EBF197A55D8A5C06FA9F" KeyPath="yes" Source="$(var.SQLCMCmd.TargetDir)\SQLCMCmd.exe.config" />
+            </Component>
+            <Component Id="cmpD18C2C47B5FB18BE2D5987FAF15C107F" Directory="INSTALLFOLDER" Guid="*">
+                <File Id="fil69261EA08BD9BBA8074DE9109D8AA7CC" KeyPath="yes" Source="$(var.SQLCMCmd.TargetDir)\SQLCMCmd.pdb" />
+            </Component>
+            <Component Id="cmpDB87117A967336CE496CC77FD17C9181" Directory="INSTALLFOLDER" Guid="*">
+                <File Id="fil800D261CED5FA2E116462666105E38E3" KeyPath="yes" Source="$(var.SQLCMCmd.TargetDir)\SQLCMCore.dll" />
+            </Component>
+            <Component Id="cmp27396DEEA785ADB0C50CBF9905EB5118" Directory="INSTALLFOLDER" Guid="*">
+                <File Id="fil487B8C324EE848E323240E1850701216" KeyPath="yes" Source="$(var.SQLCMCmd.TargetDir)\SQLCMCore.pdb" />
+            </Component>
+            <Component Id="cmp1A01EFD00F1DAF10CE06F8196357F24C" Directory="INSTALLFOLDER" Guid="*">
+                <File Id="fil08A6ABF18A6A31D6C7924DD13873F17E" KeyPath="yes" Source="$(var.SQLCMCmd.TargetDir)\System.Console.dll" />
+            </Component>
+            <Component Id="cmp3196328A6B461FCF95D6C3A5A44720F2" Directory="INSTALLFOLDER" Guid="*">
+                <File Id="fil6342337C40983F32057D5D6FEB7FDFFC" KeyPath="yes" Source="$(var.SQLCMCmd.TargetDir)\System.Reflection.TypeExtensions.dll" />
+            </Component>
+        </ComponentGroup>
+    </Fragment>
+</Wix>
