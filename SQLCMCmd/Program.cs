@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace SQLCMCmd
@@ -14,9 +15,10 @@ namespace SQLCMCmd
 	class Program
 	{
 		private static Logger logger = LogManager.GetCurrentClassLogger();
+        private static CancellationTokenSource source;
 
 
-		static void Main(string[] args)
+        static void Main(string[] args)
 		{
 			AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler(GenericErrorHandler);
 			GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
@@ -47,10 +49,20 @@ namespace SQLCMCmd
 
 		private static void Run(Options options)
 		{
-			Collector c = new Collector(options.ServerName,options.DatabaseName);
-			c.Path = options.Path;
-			c.Run();
-		}
+            Collector c = new Collector(options.ServerName, options.DatabaseName);
+            c.Path = options.Path;
+
+            Console.CancelKeyPress += delegate (object sender, ConsoleCancelEventArgs e) {
+                e.Cancel = true;
+                logger.Info("Received shutdown signal...");
+                source.CancelAfter(TimeSpan.FromSeconds(10)); // give a 10 seconds cancellation grace period 
+                c.Stop();
+            };
+
+            Task t = processCollector(c);
+            t.Wait();
+            logger.Info("Collector stopped.");
+        }
 
 		static void GenericErrorHandler(object sender, UnhandledExceptionEventArgs e)
 		{
@@ -64,7 +76,23 @@ namespace SQLCMCmd
 
 			}
 		}
-	}
+
+        public static async Task processCollector(Collector collector)
+        {
+            source = new CancellationTokenSource();
+            source.Token.Register(CancelNotification);
+            var completionSource = new TaskCompletionSource<object>();
+            source.Token.Register(() => completionSource.TrySetCanceled());
+            var task = Task.Factory.StartNew(() => collector.Run(), source.Token);
+            await Task.WhenAny(task, completionSource.Task);
+        }
+
+
+        public static void CancelNotification()
+        {
+            logger.Info("Shutdown complete.");
+        }
+    }
 
 	class Options
 	{

@@ -14,7 +14,7 @@ namespace SQLCMCore
 		public int DurationMinutes { get; set; }
 		public Server Server { get; set; }
 
-		public static Interval CreateNew(SqlConnection conn, string ServerName)
+		public static Interval CreateNew(SqlConnection conn, string ServerName, SqlTransaction tran)
 		{
 			string sql = @"
 				INSERT INTO Intervals(
@@ -24,12 +24,12 @@ namespace SQLCMCore
 					duration_minutes
 				)
 
-				OUTPUT INSERTED.interval_id
+				OUTPUT INSERTED.interval_id, INSERTED.server_id, INSERTED.duration_minutes, INSERTED.end_time
 				SELECT
 					interval_id = ISNULL(MAX(interval_id), 0) + 1,
 					server_id = (SELECT server_id FROM Servers WHERE server_name = '{0}'),
 					end_time = GETDATE(),
-					duration_minutes = DATEDIFF(minute, ISNULL((SELECT end_time FROM Intervals WHERE server_id = (SELECT server_id FROM Servers WHERE server_name = '{0}')),GETDATE()), GETDATE())
+					duration_minutes = DATEDIFF(minute, ISNULL((SELECT TOP(1) end_time FROM Intervals WHERE server_id = (SELECT server_id FROM Servers WHERE server_name = '{0}') ORDER BY end_time DESC),GETDATE()), GETDATE())
 				FROM Intervals
 			";
 
@@ -37,19 +37,23 @@ namespace SQLCMCore
 			using(SqlCommand cmd = conn.CreateCommand())
 			{
 				cmd.CommandText = String.Format(sql, ServerName);
+                cmd.Transaction = tran;
 
-				SqlDataReader reader = cmd.ExecuteReader();
-				while (reader.Read())
-				{
-					interval = new Interval();
-					interval.Id = reader.GetInt32(reader.GetOrdinal("interval_id"));
-					interval.Server = new Server() {
-						Id = reader.GetOrdinal("server_id"),
-						Name = ServerName
-					};
-					interval.EndDate = reader.GetDateTime(reader.GetOrdinal("end_time"));
-					interval.DurationMinutes = reader.GetInt32(reader.GetOrdinal("duration_minutes"));
-				}
+                using (SqlDataReader reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        interval = new Interval();
+                        interval.Id = reader.GetInt32(reader.GetOrdinal("interval_id"));
+                        interval.Server = new Server()
+                        {
+                            Id = reader.GetOrdinal("server_id"),
+                            Name = ServerName
+                        };
+                        interval.EndDate = reader.GetDateTime(reader.GetOrdinal("end_time"));
+                        interval.DurationMinutes = reader.GetInt32(reader.GetOrdinal("duration_minutes"));
+                    }
+                }
 			}
 
 			return interval;

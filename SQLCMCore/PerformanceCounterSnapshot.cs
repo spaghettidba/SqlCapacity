@@ -1,4 +1,5 @@
-﻿using SQLCMCore.Util;
+﻿using NLog;
+using SQLCMCore.Util;
 using System;
 using System.Collections.Generic;
 using System.Data.SqlClient;
@@ -8,74 +9,35 @@ using System.Threading.Tasks;
 
 namespace SQLCMCore
 {
-	public class PerformanceCounterSnapshot
+	public class PerformanceCounterSnapshot : ICloneable
 	{
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
+        private double _value;
+
 		public CounterDefinition Counter { get; set; }
-		public long Value { get; set; }
+		public long RawValue { get; set; }
+		public double Value {
+			get
+			{
+				return this.Counter.Cumulative ? _value : RawValue;
+			}
+			set
+			{
+				if(this.Counter.Cumulative)
+				{
+					_value = value;
+				}
+				else
+				{
+					RawValue = (long)value;
+				}
+			}
+		}
 		public bool Rebased { get; set; }
 		public Interval Interval { get; set; }
 
-
-		public static List<PerformanceCounterSnapshot> LoadLast(SqlConnection conn, string ServerName)
-		{
-			List<PerformanceCounterSnapshot> result = new List<PerformanceCounterSnapshot>();
-
-			string sql = @"
-				SELECT [interval_id]
-					,[counter_name]
-					,[counter_instance]
-					,[max_counter_value]
-					,[end_time]
-					,[duration_minutes]
-					,[server_name]
-					,[server_id]
-				FROM [PerformanceCounters] AS pc
-				CROSS APPLY (
-					SELECT TOP(1) i.end_time, i.duration_minutes, s.server_name, s.server_id
-					FROM Intervals AS i
-					INNER JOIN Servers AS s
-						ON i.server_id = s.server_id 
-					WHERE server_name = @target
-						AND pc.interval_id = i.interval_id
-					ORDER BY interval_id DESC
-				) AS last_interval
-				";
-
-			using (SqlCommand cmd = conn.CreateCommand())
-			{
-				cmd.CommandText = sql;
-				using (SqlDataReader rdr = cmd.ExecuteReader())
-				{
-					while (rdr.Read())
-					{
-						PerformanceCounterSnapshot snap = new PerformanceCounterSnapshot()
-						{
-							Counter = new CounterDefinition()
-							{
-								Name = rdr.GetString(rdr.GetOrdinal("counter_name")),
-								Instance = rdr.GetString(rdr.GetOrdinal("counter_instance"))
-							},
-							Value = rdr.GetInt64(rdr.GetOrdinal("max_counter_value")),
-							Interval = new Interval()
-							{
-								Id = rdr.GetInt32(rdr.GetOrdinal("interval_id")),
-								EndDate = rdr.GetDateTime(rdr.GetOrdinal("end_time")),
-								DurationMinutes = rdr.GetInt32(rdr.GetOrdinal("duration_minutes")),
-								Server = new Server()
-								{
-									Name = rdr.GetString(rdr.GetOrdinal("server_name")),
-									Id = rdr.GetInt32(rdr.GetOrdinal("server_id"))
-								}
-							}
-						};
-						result.Add(snap);
-					}
-				}
-
-			}
-
-			return result;
-		}
+		
 
 		public static List<PerformanceCounterSnapshot> Take(SqlConnection targetConnection, List<CounterDefinition> counters)
 		{
@@ -122,7 +84,8 @@ namespace SQLCMCore
 								Cumulative = reader.GetBoolean(reader.GetOrdinal("cumulative"))
 							},
 							Value = reader.GetInt64(reader.GetOrdinal("cntr_value")),
-							Interval = new Interval()
+                            RawValue = reader.GetInt64(reader.GetOrdinal("cntr_value")),
+                            Interval = new Interval()
 							{
 								Server = new Server()
 								{
@@ -142,43 +105,78 @@ namespace SQLCMCore
 
 		public static void SaveToDatabase(SqlConnection conn, string TableName, IEnumerable<PerformanceCounterSnapshot> data)
 		{
+            using (SqlTransaction tran = conn.BeginTransaction())
+            {
 
-			using (SqlBulkCopy bulkCopy = new System.Data.SqlClient.SqlBulkCopy(conn,
-														   SqlBulkCopyOptions.KeepIdentity |
-														   SqlBulkCopyOptions.FireTriggers |
-														   SqlBulkCopyOptions.CheckConstraints |
-														   SqlBulkCopyOptions.TableLock, 
-														   null))
-			{
+                try
+                {
 
-				bulkCopy.DestinationTableName = TableName;
-				bulkCopy.BatchSize = 1000;
-				bulkCopy.BulkCopyTimeout = 300;
+                    var Intervals = (
+                        from t in data
+                        group t by new
+                        {
+                            server_name = t.Interval.Server.Name
+                        }
+                        into grp
+                        select new
+                        {
+                            grp.Key.server_name,
+                            Interval.CreateNew(conn, grp.Key.server_name, tran).Id
+                        }).ToList(); 
 
-				var Table = from t in data
-							group t by new
-							{
-								interval_id = t.Interval.Id,
-								counter_name = t.Counter.Name,
-								counter_instance = t.Counter.Instance
-							}
-							into grp
-							select new
-							{
-								grp.Key.interval_id,
-								grp.Key.counter_name,
-								grp.Key.counter_instance,
+                    
 
-								min_counter_value = grp.Min(t => t.Value),
-								max_counter_value = grp.Max(t => t.Value),
-								avg_counter_value = grp.Average(t => t.Value)
-							};
+                    using (SqlBulkCopy bulkCopy = new System.Data.SqlClient.SqlBulkCopy(conn,
+                                                                    SqlBulkCopyOptions.KeepIdentity |
+                                                                    SqlBulkCopyOptions.FireTriggers |
+                                                                    SqlBulkCopyOptions.CheckConstraints |
+                                                                    SqlBulkCopyOptions.TableLock,
+                                                                    tran))
+                    {
+                        bulkCopy.DestinationTableName = TableName;
+                        bulkCopy.BatchSize = 1000;
+                        bulkCopy.BulkCopyTimeout = 300;
 
-				using (var dt = DataUtils.ToDataTable(Table))
-				{
-					bulkCopy.WriteToServer(dt);
-				}
-			}
+                        var Table = (
+                            from t in data
+                            group t by new
+                            {
+                                server_name = t.Interval.Server.Name,
+                                counter_name = t.Counter.Name,
+                                counter_instance = t.Counter.Instance
+                            }
+                            into grp
+                            select new
+                            {
+                                interval_id = Intervals.First(i => i.server_name == grp.Key.server_name).Id,
+                                grp.Key.counter_name,
+                                grp.Key.counter_instance,
+                                min_counter_value = grp.Min(t => t.Value),
+                                max_counter_value = grp.Max(t => t.Value),
+                                avg_counter_value = grp.Average(t => t.Value)
+                            }).ToList();
+
+                        using (var dt = DataUtils.ToDataTable(Table))
+                        {
+                            bulkCopy.WriteToServer(dt);
+                        }
+                    }
+
+                    tran.Commit();
+
+                }
+                catch(Exception e)
+                {
+                    tran.Rollback();
+                    logger.Error(e);
+                    throw;
+                }
+            }
+		}
+
+		public object Clone()
+		{
+			return this.MemberwiseClone();
 		}
 	}
 }

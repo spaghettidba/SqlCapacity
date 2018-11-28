@@ -1,4 +1,5 @@
-﻿using SQLCMCore.Util;
+﻿using NLog;
+using SQLCMCore.Util;
 using System;
 using System.Collections.Generic;
 using System.Data.SqlClient;
@@ -11,7 +12,9 @@ namespace SQLCMCore
 {
     public class Collector
     {
-		private List<PerformanceCounterSnapshot> baseCounters = new List<PerformanceCounterSnapshot>();
+        private static Logger logger = LogManager.GetCurrentClassLogger();
+
+        private List<PerformanceCounterSnapshot> baseCounters = new List<PerformanceCounterSnapshot>();
 
 		private List<PerformanceCounterSnapshot> counterData = new List<PerformanceCounterSnapshot>();
 		private bool stopped;
@@ -22,7 +25,7 @@ namespace SQLCMCore
 
 		public string TargetTable { get; set; } = "dbo.PerformanceCounters";
 		public int CollectionInterval { get; set; } = 15;
-		public int UploadInterval { get; set; } = 120;
+		public int UploadInterval { get; set; } = 60;
 
 		public Collector(string server, string database)
 		{
@@ -35,15 +38,23 @@ namespace SQLCMCore
 			Task t = Task.Factory.StartNew(() => UploadMain());
 			while (!stopped)
 			{
-				Collect();
-				for(int i=0; i< CollectionInterval; i++)
-				{
-					if (stopped)
-					{
-						break;
-					}
-					Thread.Sleep(1000);
-				}
+                try
+                {
+                    Collect();
+                    for (int i = 0; i < CollectionInterval; i++)
+                    {
+                        if (stopped)
+                        {
+                            break;
+                        }
+                        Thread.Sleep(1000);
+                    }
+                }
+                catch (Exception e)
+                {
+                    logger.Error("Error occured during counter collection");
+                    logger.Error(e);
+                }
 				
 			}
 		}
@@ -52,15 +63,22 @@ namespace SQLCMCore
 		{
 			while (!stopped)
 			{
-				Upload();
-				for (int i = 0; i < UploadInterval; i++)
-				{
-					if (stopped)
-					{
-						break;
-					}
-					Thread.Sleep(1000);
-				}
+                try
+                {
+                    Upload();
+                    for (int i = 0; i < UploadInterval; i++)
+                    {
+                        if (stopped)
+                        {
+                            break;
+                        }
+                        Thread.Sleep(1000);
+                    }
+                }
+                catch (Exception e)
+                {
+                    logger.Error(e);
+                }
 			}
 		}
 
@@ -97,11 +115,22 @@ namespace SQLCMCore
 							var baseSnap = baseCounters.FirstOrDefault(s => s.Counter.Name == snap.Counter.Name && s.Counter.Instance == snap.Counter.Instance && snap.Interval.Server.Name == target.Name);
 							if(baseSnap != null)
 							{
+								// take a copy of this snapshot
+								var tmpSnap = (PerformanceCounterSnapshot)snap.Clone();
+
+								//
 								// rebase counter
-								snap.Value -= baseSnap.Value;
-                                //snap.Value = qui dovrei ricalcolare in base alla differenza rispetto allo snapshot precedente
-                                // controlla https://blogs.msdn.microsoft.com/oldnewthing/20160219-00/?p=93052
+								// 
+								// see https://blogs.msdn.microsoft.com/oldnewthing/20160219-00/?p=93052
+								//
+								snap.Value -= baseSnap.RawValue;
+								if (snap.Counter.Name.EndsWith("/sec"))
+								{
+									snap.Value = snap.Value / (snap.Interval.EndDate.Subtract(baseSnap.Interval.EndDate).TotalSeconds);
+								}
                                 snap.Rebased = true;
+
+								baseSnap = tmpSnap;
 							}
 							else
 							{
