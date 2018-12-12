@@ -9,6 +9,7 @@ namespace SQLCMCore
 {
 	public class CounterDefinition
 	{
+        public int Id { get; set; }
 		public string Name { get; set; }
 		public string Instance { get; set; }
 		public bool Cumulative { get; set; }
@@ -17,7 +18,7 @@ namespace SQLCMCore
 		{
 			List<CounterDefinition> result = new List<CounterDefinition>();
 			string sql = @"
-				SELECT counter_name, instance_name, cumulative 
+				SELECT counter_id, counter_name, instance_name, cumulative 
 				FROM CounterDefinitions
 			";
 			using (SqlCommand cmd = conn.CreateCommand())
@@ -27,7 +28,12 @@ namespace SQLCMCore
 				{
 					while (rdr.Read())
 					{
-						result.Add(new CounterDefinition() { Name = rdr.GetString(0), Instance = rdr.GetString(1), Cumulative = rdr.GetBoolean(2) });
+						result.Add(new CounterDefinition() {
+                            Id         = rdr.GetInt32(rdr.GetOrdinal("counter_id")),
+                            Name       = rdr.GetString(rdr.GetOrdinal("counter_name")),
+                            Instance   = rdr.GetString(rdr.GetOrdinal("instance_name")),
+                            Cumulative = rdr.GetBoolean(rdr.GetOrdinal("cumulative"))
+                        });
 					}
 				}
 

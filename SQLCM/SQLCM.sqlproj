@@ -83,4 +83,7 @@
       <DatabaseVariableLiteralValue>msdb</DatabaseVariableLiteralValue>
     </ArtifactReference>
   </ItemGroup>
+  <ItemGroup>
+    <RefactorLog Include="SQLCM.refactorlog" />
+  </ItemGroup>
 </Project>

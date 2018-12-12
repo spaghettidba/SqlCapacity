@@ -35,10 +35,12 @@ namespace SQLCMCore
 
 		public void Run()
 		{
+			int errorCount = 0;
+			DateTime dateOfLastError = DateTime.MinValue;
 			Task t = Task.Factory.StartNew(() => UploadMain());
 			while (!stopped)
 			{
-                try
+				try
                 {
                     Collect();
                     for (int i = 0; i < CollectionInterval; i++)
@@ -52,10 +54,23 @@ namespace SQLCMCore
                 }
                 catch (Exception e)
                 {
-                    logger.Error("Error occured during counter collection");
+					logger.Error("Error occured during counter collection");
                     logger.Error(e);
-                }
-				
+					errorCount++;
+					if (errorCount > 10)
+					{
+						if(dateOfLastError > DateTime.Now.AddSeconds(-CollectionInterval))
+						{
+							throw new InvalidOperationException("The maximum number of exceptions has been thrown", e);
+						}
+						else
+						{
+							errorCount = 0;
+						}
+					}
+					dateOfLastError = DateTime.Now;
+				}
+
 			}
 		}
 
@@ -112,7 +127,7 @@ namespace SQLCMCore
 						// For cumulative counters I subtract the value of the initial counter value as a base
 						foreach(var snap in currentSnapshot.Where(s => s.Counter.Cumulative))
 						{
-							var baseSnap = baseCounters.FirstOrDefault(s => s.Counter.Name == snap.Counter.Name && s.Counter.Instance == snap.Counter.Instance && snap.Interval.Server.Name == target.Name);
+							var baseSnap = baseCounters.FirstOrDefault(s => s.Counter.Name == snap.Counter.Name && s.Counter.Instance == snap.Counter.Instance && s.Interval.Server.Name == target.Name);
 							if(baseSnap != null)
 							{
 								// take a copy of this snapshot
@@ -130,8 +145,8 @@ namespace SQLCMCore
 								}
                                 snap.Rebased = true;
 
-								baseSnap = tmpSnap;
-							}
+                                baseCounters[baseCounters.IndexOf(baseSnap)] = tmpSnap;
+                            }
 							else
 							{
 								// base counter not found: it needs to be added to the cache

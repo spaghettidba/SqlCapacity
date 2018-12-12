@@ -20,6 +20,7 @@ namespace SQLCMCore
 				SELECT * 
 				FROM Servers
 				WHERE path LIKE @path + '%'
+                    OR path + '/' + server_name LIKE @path + '%'
 			";
 
 			List<Server> result = new List<Server>();
