@@ -69,6 +69,7 @@
     <Build Include="dbo\WaitStats.sql" />
     <Build Include="dbo\CounterDefinitions.sql" />
     <Build Include="dbo\Servers.sql" />
+    <Build Include="dbo\WaitDefinitions.sql" />
   </ItemGroup>
   <ItemGroup>
     <None Include="data\CounterDefinitions.sql" />

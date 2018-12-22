@@ -59,6 +59,7 @@
     <Compile Include="Server.cs" />
     <Compile Include="Util\ConnectionInfo.cs" />
     <Compile Include="Util\DataUtils.cs" />
+    <Compile Include="WaitStatsSnapshot.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

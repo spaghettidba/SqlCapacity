@@ -107,106 +107,77 @@ namespace SQLCMCore
 			using (SqlCommand cmd = targetConnection.CreateCommand())
 			{
 				cmd.CommandText = sql;
-				var reader = cmd.ExecuteReader();
-				while (reader.Read())
-				{
-					result.Add(
-						new PerformanceCounterSnapshot()
-						{
-							Counter = new CounterDefinition()
-							{
-                                Id = reader.GetInt32(reader.GetOrdinal("Id")),
-                                Name = reader.GetString(reader.GetOrdinal("counter_name")),
-								Instance = reader.GetString(reader.GetOrdinal("instance_name")),
-								Cumulative = reader.GetBoolean(reader.GetOrdinal("cumulative"))
-							},
-							Value = reader.GetInt64(reader.GetOrdinal("cntr_value")),
-                            RawValue = reader.GetInt64(reader.GetOrdinal("cntr_value")),
-                            Interval = new Interval()
-							{
-								Server = new Server()
-								{
-									Name = targetConnection.DataSource
-								},
-								EndDate = intervalEnd
-							}
-						}
-					);
-					
-				}
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        result.Add(
+                            new PerformanceCounterSnapshot()
+                            {
+                                Counter = new CounterDefinition()
+                                {
+                                    Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                                    Name = reader.GetString(reader.GetOrdinal("counter_name")),
+                                    Instance = reader.GetString(reader.GetOrdinal("instance_name")),
+                                    Cumulative = reader.GetBoolean(reader.GetOrdinal("cumulative"))
+                                },
+                                Value = reader.GetInt64(reader.GetOrdinal("cntr_value")),
+                                RawValue = reader.GetInt64(reader.GetOrdinal("cntr_value")),
+                                Interval = new Interval()
+                                {
+                                    Server = new Server()
+                                    {
+                                        Name = targetConnection.DataSource
+                                    },
+                                    EndDate = intervalEnd
+                                }
+                            }
+                        );
+
+                    }
+                }
 			}
 
 			return result;
 		}
 
 
-		public static void SaveToDatabase(SqlConnection conn, string TableName, IEnumerable<PerformanceCounterSnapshot> data)
+		public static void SaveToDatabase(SqlConnection conn, string TableName, IEnumerable<PerformanceCounterSnapshot> data, SqlTransaction tran, IEnumerable<Interval> intervals)
 		{
-            using (SqlTransaction tran = conn.BeginTransaction())
+            using (SqlBulkCopy bulkCopy = new System.Data.SqlClient.SqlBulkCopy(conn,
+                                                            SqlBulkCopyOptions.KeepIdentity |
+                                                            SqlBulkCopyOptions.FireTriggers |
+                                                            SqlBulkCopyOptions.CheckConstraints |
+                                                            SqlBulkCopyOptions.TableLock,
+                                                            tran))
             {
+                bulkCopy.DestinationTableName = TableName;
+                bulkCopy.BatchSize = 1000;
+                bulkCopy.BulkCopyTimeout = 300;
 
-                try
-                {
-
-                    var Intervals = (
-                        from t in data
-                        group t by new
-                        {
-                            server_name = t.Interval.Server.Name
-                        }
-                        into grp
-                        select new
-                        {
-                            grp.Key.server_name,
-                            Interval.CreateNew(conn, grp.Key.server_name, tran).Id
-                        }).ToList(); 
-
-                    
-
-                    using (SqlBulkCopy bulkCopy = new System.Data.SqlClient.SqlBulkCopy(conn,
-                                                                    SqlBulkCopyOptions.KeepIdentity |
-                                                                    SqlBulkCopyOptions.FireTriggers |
-                                                                    SqlBulkCopyOptions.CheckConstraints |
-                                                                    SqlBulkCopyOptions.TableLock,
-                                                                    tran))
+                var Table = (
+                    from t in data
+                    group t by new
                     {
-                        bulkCopy.DestinationTableName = TableName;
-                        bulkCopy.BatchSize = 1000;
-                        bulkCopy.BulkCopyTimeout = 300;
-
-                        var Table = (
-                            from t in data
-                            group t by new
-                            {
-                                server_name = t.Interval.Server.Name,
-                                counter_id = t.Counter.Id
-                            }
-                            into grp
-                            select new
-                            {
-                                interval_id = Intervals.First(i => i.server_name == grp.Key.server_name).Id,
-                                grp.Key.counter_id,
-                                min_counter_value = grp.Min(t => t.Value),
-                                max_counter_value = grp.Max(t => t.Value),
-                                avg_counter_value = grp.Average(t => t.Value)
-                            }).ToList();
-
-                        using (var dt = DataUtils.ToDataTable(Table))
-                        {
-                            bulkCopy.WriteToServer(dt);
-                        }
+                        server_name = t.Interval.Server.Name,
+                        counter_id = t.Counter.Id
                     }
+                    into grp
+                    select new
+                    {
+                        interval_id = intervals.First(i => i.Server.Name == grp.Key.server_name).Id,
+                        grp.Key.counter_id,
+                        min_counter_value = grp.Min(t => t.Value),
+                        max_counter_value = grp.Max(t => t.Value),
+                        avg_counter_value = grp.Average(t => t.Value)
+                    }).ToList();
 
-                    tran.Commit();
-
-                }
-                catch(Exception e)
+                using (var dt = DataUtils.ToDataTable(Table))
                 {
-                    tran.Rollback();
-                    logger.Error(e);
-                    throw;
+                    bulkCopy.WriteToServer(dt);
                 }
             }
+
 		}
 
 		public object Clone()
